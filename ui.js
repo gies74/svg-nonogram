@@ -26,6 +26,10 @@ const loadPuzzle = () => {
     const select = document.getElementById("puzzleSelect");
     const puzzleName = select.options[select.selectedIndex].text;
     puzzle = new Puzzle(puzzles[puzzleName]);
+    _loadPuzzle();
+}
+
+const _loadPuzzle = () => {
     const width = Math.max(offset + (puzzle.cols.length + 1) * cellSize, actions.length * buttonWidth + cellSize);
     canvas.size(width, offset + (puzzle.rows.length + 2) * cellSize + buttonHeight);
     drawAll();
@@ -52,7 +56,7 @@ const drawPuzzle = () => {
         puzzle.cols.forEach((_,ci) => {
             const x0 = offset + ci * cellSize;
             const puzzleCell = puzzle.cells[ri][ci];
-            const color = puzzleCell.value === "open" ? '#fff' : puzzleCell.value === "set" ? '#555' : '#ddd';
+            const color = puzzleCell.value === 0 ? '#fff' : puzzleCell.value === 1 ? '#555' : '#ddd';
             const rect = grid.rect(cellSize, cellSize).move(x0, y0).attr({ fill: color }).stroke({ width: 0 });
             rect["data"] = puzzleCell;
             rects.push(rect.click(onCellClick));
@@ -110,12 +114,13 @@ const drawToolbar = (actions) => {
 };
 
 const executeAction = async (action, button) => {
+    mode = puzzle.engageMode;
     switch (action) {
         case "Speelmodus":
-            mode = puzzle.engageMode === "Bewerkmodus" ? "Speelmodus" : "Bewerkmodus";
+            mode = mode === "Bewerkmodus" ? "Speelmodus" : "Bewerkmodus";
             puzzle.engageMode = mode;
             button.children()[1].text(mode);
-            buttons.filter(b => b !== button).forEach(b => {
+            buttons.slice(4).forEach(b => {
                 b.children()[0].attr({ fill: mode === "Speelmodus" ? '#fff' : '#ddd' })
                 b["data-enabled"] = mode === "Speelmodus";
             });
@@ -125,16 +130,31 @@ const executeAction = async (action, button) => {
             } else {
                 solvePuzzle();
             }
+            const b2Text = mode === "Speelmodus" ? actions[1] : "Laad specs";
+            buttons[1].children()[1].text(b2Text);
+            const b3Text = mode === "Speelmodus" ? actions[2] : "Scratch BxH";
+            buttons[2].children()[1].text(b3Text);
+            const b4Text = mode === "Speelmodus" ? actions[3] : "Inverteren";
+            buttons[3].children()[1].text(b4Text);
 
             break;
             case "Geef hint":
-                await getHint();
+                if (mode === "Speelmodus")
+                    await getHint();
+                else
+                    loadPuzzleSpecs();
                 break;
             case "Zet oplosstap":
-                await wrapTimedOperation(solve1Step);
+                if (mode === "Speelmodus")
+                    await wrapTimedOperation(solve1Step);
+                else
+                    scratchNxM();
                 break;
             case "Stap terug":
-                rollback1Step();
+                if (mode === "Speelmodus")
+                    rollback1Step();
+                else
+                    inversePuzzle();
                 break;
             case "Los op":
                 await wrapTimedOperation(solvePuzzle);
@@ -143,17 +163,50 @@ const executeAction = async (action, button) => {
     }
 }
 
+const inversePuzzle = () => {
+    puzzle.cells.forEach(row => row.forEach(cell => {
+        cell.value = cell.value === 1 ? -1 : 1;
+    }));
+    updateAllSpecs();
+    refreshDisplay();
+}
+
+const scratchNxM = () => {
+    const specs = document.getElementById("output").value;
+    const pattern = /^\d+x\d+$/;
+    if (!pattern.test(specs)) {
+        alert("Geef een B(reedte)xH(oogte) formaat op. Bijvoorbeeld 15x10");
+        return;
+    }
+    const [b, h] = specs.split("x").map(Number);
+    const rows = Array(h).fill().map(() => [b]);
+    const cols = Array(b).fill().map(() => [h]);
+    puzzle = new Puzzle([ cols, rows ]);
+    _loadPuzzle();
+};
+
+const loadPuzzleSpecs = () => {
+    const specs = document.getElementById("output").value;
+    try {
+        puzzle = new Puzzle(JSON.parse(specs));
+    } catch (e) {
+        alert(e);
+        return;
+    }
+    _loadPuzzle();
+};
+
 const onCellClick = (event) => {
     const rect = event.target.instance;
     const cell = rect["data"];
     if (puzzle.engageMode === "Speelmodus") {
-        cell.value = cell.value === "open" ? "set" : cell.value === "set" ? "unset" : "open";
+        cell.value = cell.value === 0 ? 1 : cell.value === 1 ? -1 : 0;
         updateSolveState(cell);
     } else {
-        cell.value = cell.value === "set" ? "unset" : "set";
+        cell.value = cell.value === 1 ? -1 : 1;
         updateSpecs(cell);
     }
-    rect.attr({ fill: cell.value === "open" ? '#fff' : cell.value === "set" ? '#555' : '#ddd' });
+    rect.attr({ fill: cell.value === 0 ? '#fff' : cell.value === 1 ? '#555' : '#ddd' });
 };
 
 const updateSolveState = (cell) => {
@@ -167,20 +220,26 @@ const updateSolveState = (cell) => {
 
 }
 
+const updateAllSpecs = () => {
+    puzzle.cells.forEach(row => row.forEach(cell => {
+        updateSpecs(cell);
+    }));
+}
+
 const updateSpecs = (cell) => {
     // use the cell's x and y property
 
     var counts = [puzzle.rows[cell.y], puzzle.cols[cell.x]].map(rowcol => {
     // get row's consecutive set cell counts
         return rowcol.cells.reduce((acc, cell) => {
-                if (cell.value === "set") {
+                if (cell.value === 1) {
                     if (acc.prevCellSet) {
                         acc.counts[acc.counts.length - 1]++;
                     } else {
                         acc.counts.push(1);
                     }
                 }
-                acc.prevCellSet = cell.value === "set";
+                acc.prevCellSet = cell.value === 1;
                 return acc;
             }, { prevCellSet: false, counts: [] });
     }).map(rowcol => rowcol.counts);
@@ -205,12 +264,12 @@ const reportText = (text, append=false) => {
 
 const resetPuzzle = () => {
     puzzle.resetSolveState();
-    refreshDisplay(canvas, puzzle);
+    refreshDisplay();
 }
 
 const refreshDisplay = () => {
     rects.forEach(rect => {
-        const color = rect["data"].value === "open" ? '#fff' : rect["data"].value === "set" ? '#555' : '#ddd';
+        const color = rect["data"].value === 0 ? '#fff' : rect["data"].value === 1 ? '#555' : '#ddd';
         rect.attr({ fill: color });
     });
 }

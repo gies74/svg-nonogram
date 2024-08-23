@@ -1,12 +1,12 @@
 class Puzzle {
     constructor(puzzleSpec) {
-        this.cells = Array(puzzleSpec[0].length).fill().map((_, r) => Array(puzzleSpec[1].length).fill().map((_, c) => new Cell(r, c)));
-        this.init(puzzleSpec[0], puzzleSpec[1]);
-        this.resetSolveState();
+        // [1] are the column specs, [0] are the row specs
+        this.cells = Array(puzzleSpec[1].length).fill().map((_, r) => Array(puzzleSpec[0].length).fill().map((_, c) => new Cell(r, c)));
+        this.init(puzzleSpec[1], puzzleSpec[0]);
         this.engageMode = "Speelmodus";
     }
 
-    init(colSpecs, rowSpecs) {
+    init(rowSpecs, colSpecs) {
         this.rows = [];
         this.cols = [];
 
@@ -26,12 +26,41 @@ class Puzzle {
     }
 
     resetSolveState() {
-        this.cells.forEach(row => row.forEach(cell => cell.value = "open"));
+        this.cells.forEach(row => row.forEach(cell => cell.value = 0));
         this.initialStage = true;
-        this.mode = "rows";
-        this.indices = this.rows.map((_, i) => i);
-        this.followUpIndices = new Set();
+
+        this._smartSolveState();
+
         this.steps = [];
+    }
+
+    _smartSolveState() {
+        const modeUncertainty = {};
+        ["rows", "cols"].forEach(mode => {
+            const rowcols = this[mode];
+            const uncertainties = rowcols.map((rowcol, i) => {
+                // sum the specs of rowcol
+                return {
+                    index: i,
+                    uncertainty: rowcol.cells.length - (rowcol.specs.reduce((a, b) => a + b, 0) + rowcol.specs.length - 1)
+                };
+            }).sort((a, b) => a.uncertainty - b.uncertainty);
+            modeUncertainty[mode] = uncertainties;
+        }, this);
+        const minRowUncertainty = Math.min(...modeUncertainty.rows.map(u => u.uncertainty));
+        const minColUncertainty = Math.min(...modeUncertainty.cols.map(u => u.uncertainty));
+        const rowPersue = modeUncertainty.rows.filter(u => this.rows[u.index].specs.some(n => n > u.uncertainty), this).map(u => u.index);
+        const colPersue = modeUncertainty.cols.filter(u => this.cols[u.index].specs.some(n => n > u.uncertainty), this).map(u => u.index);
+        if (minRowUncertainty <= minColUncertainty) {
+            this.mode = "rows";
+            this.indices = rowPersue;
+            this.followUpIndices = new Set(colPersue);
+        } else {
+            this.mode = "cols";
+            this.indices = colPersue;
+            this.followUpIndices = new Set(rowPersue);
+        }
+
     }
 
     solve() {
@@ -51,7 +80,7 @@ class Puzzle {
         }
         const step = this.steps.pop();
         const rowcol = step.orientation === "rows" ? this.rows[step.index] : this.cols[step.index];
-        step.indicesFixed.forEach(i => rowcol.cells[i].value = "open");
+        step.indicesFixed.forEach(i => rowcol.cells[i].value = 0);
         this.mode = step.orientation;
         this.indices.unshift(step.index);
         this.followUpIndices = step.followUpIndices;
@@ -101,7 +130,7 @@ class Puzzle {
     }
 
     finished() {
-        return this.cells.every(row => row.every(cell => cell.value !== "open"));
+        return this.cells.every(row => row.every(cell => cell.value !== 0));
     }
 
 }
@@ -128,7 +157,7 @@ class RowCol {
             throw "No solution possible?";
         const foundIndices = [];
         alignments[0].forEach((value, idx) => {
-            if (alignments.slice(0).every(align => align[idx] === value) && this.cells[idx].value === "open") {
+            if (alignments.slice(0).every(align => align[idx] === value) && this.cells[idx].value === 0) {
                 if (!hintsMode)
                     this.cells[idx].value = value;
                 foundIndices.push(idx);
@@ -151,9 +180,9 @@ class RowCol {
 
         const alignments = [];
         if (!this.hmm.states[stateIdx].isSet) {
-            if (["open", "unset"].includes(this.cells[cellIdx].value)) {
+            if ([0, -1].includes(this.cells[cellIdx].value)) {
                 this.findAlignments(cellIdx - 1, stateIdx, 0).forEach(align => {
-                    alignments.push(align.concat(["unset"]));
+                    alignments.push(align.concat([-1]));
                 });
             }
             if (stateLen === 0 && stateIdx > 0) {
@@ -163,9 +192,9 @@ class RowCol {
                 });
             }
         } else {
-            if (stateLen > 0 && ["open", "set"].includes(this.cells[cellIdx].value)) {
+            if (stateLen > 0 && [0, 1].includes(this.cells[cellIdx].value)) {
                 this.findAlignments(cellIdx - 1, stateIdx, stateLen - 1).forEach(align => {
-                    alignments.push(align.concat(["set"]));
+                    alignments.push(align.concat([1]));
                 });
             }
             else if (stateLen === 0 && stateIdx > 0) {
@@ -207,7 +236,7 @@ class Cell {
   constructor(y, x) {
     this.y = y;
     this.x = x;
-    this.value = "open";  // possible values: "open", "set", "unset"
+    this.value = 0;  // possible values: 0, 1, -1
   }
 }
 
