@@ -139,6 +139,7 @@ class RowCol {
     constructor(specs, cells) {
         this.updateSpecs(specs);
         this.cells = cells;
+        this._resetGrid();
     }
 
     _resetGrid() {
@@ -151,8 +152,8 @@ class RowCol {
     }
 
     solve(hintsMode=false) {
-        this._resetGrid();
         const alignments = this.findAlignments(this.cells.length - 1, this.hmm.states.length - 1, this.hmm.states[this.hmm.states.length - 1].minlen);
+        this._resetGrid();
         if (alignments.length === 0)
             throw "No solution possible?";
         const foundIndices = [];
@@ -179,25 +180,25 @@ class RowCol {
         }
 
         const alignments = [];
-        if (!this.hmm.states[stateIdx].isSet) {
-            if ([0, -1].includes(this.cells[cellIdx].value)) {
-                this.findAlignments(cellIdx - 1, stateIdx, 0).forEach(align => {
-                    alignments.push(align.concat([-1]));
-                });
-            }
-            if (stateLen === 0 && stateIdx > 0) {
-                const len = this.hmm.states[stateIdx - 1].minlen;
-                this.findAlignments(cellIdx, stateIdx - 1, len).forEach(align => {
-                    alignments.push(align);
-                });
-            }
-        } else {
+        if (this.hmm.states[stateIdx].isSet) {
             if (stateLen > 0 && [0, 1].includes(this.cells[cellIdx].value)) {
                 this.findAlignments(cellIdx - 1, stateIdx, stateLen - 1).forEach(align => {
                     alignments.push(align.concat([1]));
                 });
             }
             else if (stateLen === 0 && stateIdx > 0) {
+                const len = this.hmm.states[stateIdx - 1].minlen;
+                this.findAlignments(cellIdx, stateIdx - 1, len).forEach(align => {
+                    alignments.push(align);
+                });
+            }
+        } else {
+            if ([0, -1].includes(this.cells[cellIdx].value)) {
+                this.findAlignments(cellIdx - 1, stateIdx, 0).forEach(align => {
+                    alignments.push(align.concat([-1]));
+                });
+            }
+            if (stateLen === 0 && stateIdx > 0) {
                 const len = this.hmm.states[stateIdx - 1].minlen;
                 this.findAlignments(cellIdx, stateIdx - 1, len).forEach(align => {
                     alignments.push(align);
@@ -230,7 +231,6 @@ class HMMState {
         this.isSet = isSet;
     }
 }
-
 
 class Cell {
   constructor(y, x) {

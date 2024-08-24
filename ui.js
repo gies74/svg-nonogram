@@ -19,17 +19,17 @@ SVG.on(document, 'DOMContentLoaded', async function() {
         option.text = key;
         select.add(option);
     });
-    loadPuzzle();
+    loadPreconfiguredPuzzle();
 });
 
-const loadPuzzle = () => {
+const loadPreconfiguredPuzzle = () => {
     const select = document.getElementById("puzzleSelect");
     const puzzleName = select.options[select.selectedIndex].text;
     puzzle = new Puzzle(puzzles[puzzleName]);
-    _loadPuzzle();
+    initializePuzzle();
 }
 
-const _loadPuzzle = () => {
+const initializePuzzle = () => {
     const width = Math.max(offset + (puzzle.cols.length + 1) * cellSize, actions.length * buttonWidth + cellSize);
     canvas.size(width, offset + (puzzle.rows.length + 2) * cellSize + buttonHeight);
     drawAll();
@@ -182,7 +182,7 @@ const scratchNxM = () => {
     const rows = Array(h).fill().map(() => [b]);
     const cols = Array(b).fill().map(() => [h]);
     puzzle = new Puzzle([ cols, rows ]);
-    _loadPuzzle();
+    initializePuzzle();
 };
 
 const loadPuzzleSpecs = () => {
@@ -193,7 +193,7 @@ const loadPuzzleSpecs = () => {
         alert(e);
         return;
     }
-    _loadPuzzle();
+    initializePuzzle();
 };
 
 const onCellClick = (event) => {
